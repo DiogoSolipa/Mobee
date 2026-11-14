@@ -29,7 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   priority: 'fewest',
   rules: { walkUnder10: false, avoidHills: false, busWhenRain: true, stepFree: false },
   contextNames: { work: 'Work', home: 'Home', errand: 'Errands', self: 'Me time' },
-  lang: 'en',
+  lang: 'pt',
   theme: 'auto',
   name: 'Rita',
   notifications: true,

@@ -2,7 +2,7 @@
   "name": "Mobee",
   "short_name": "Mobee",
   "description": "Plans change. Mobee adapts.",
-  "start_url": "/",
+  "start_url": "/app",
   "display": "standalone",
   "background_color": "#fbf8f2",
   "theme_color": "#f4b21b",

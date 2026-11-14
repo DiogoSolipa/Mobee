@@ -240,7 +240,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const stored = load();
     if (stored) dispatch({ type: 'hydrate', state: stored });
-    else if (typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('pt')) dispatch({ type: 'settings', patch: { lang: 'pt' } });
+    // Portuguese by default (pilot in Lisbon); English is one tap away.
     setHydrated(true);
   }, []);
   useEffect(() => { if (hydrated) save(state); }, [state, hydrated]);

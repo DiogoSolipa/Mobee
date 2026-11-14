@@ -13,7 +13,7 @@ export function TopBar() {
   const simulated = state.demo.disruptions.length > 0 || state.demo.rain || state.demo.clock !== null;
   return (
     <header className="topbar">
-      <Link href="/" aria-label="Mobee" style={{ color: 'var(--ink)' }}><Logo size={22} /></Link>
+      <Link href="/app" aria-label="Mobee" style={{ color: 'var(--ink)' }}><Logo size={22} /></Link>
       <div className="row" style={{ gap: 8 }}>
         <Link href="/live" className={`mb-status ${ok ? 'mb-status--on-time' : 'mb-status--at-risk'}`} style={{ textDecoration: 'none', minHeight: 32 }}>
           <Icon name={ok ? 'route' : 'alert'} size={16} />
@@ -45,7 +45,7 @@ export function SubPage({ title, children }: { title: string; children: ReactNod
   return (
     <main className="app">
       <header className="topbar">
-        <Link href="/" className="mb-btn mb-btn--quiet" style={{ paddingLeft: 8 }}><Icon name="undo" size={20} />{t(state.settings.lang, 'back')}</Link>
+        <Link href="/app" className="mb-btn mb-btn--quiet" style={{ paddingLeft: 8 }}><Icon name="undo" size={20} />{t(state.settings.lang, 'back')}</Link>
         <Logo variant="mark" size={32} />
       </header>
       <h1 className="greeting">{title}</h1>
