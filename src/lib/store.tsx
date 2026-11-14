@@ -6,7 +6,7 @@ import { replan, triggerSignature, undoDeadline } from './engine/replan';
 import { MatrixPlanner, mergeRoutes, type LegMiss, type RouteEntry } from './engine/travel';
 import { detectTriggers, dismissKeys, filterDismissed, type Detection } from './engine/triggers';
 import { t } from './i18n';
-import { DEFAULT_SETTINGS, ritaDay } from './seed';
+import { DEFAULT_SETTINGS, RITA_NOW, ritaDay, ritaDayNow } from './seed';
 import { autoTheme } from './theme';
 
 /**
@@ -64,7 +64,7 @@ type Action =
   | { type: 'demoRain'; on: boolean }
   | { type: 'demoClear' }
   | { type: 'demoClock'; minutes: Minutes | null }
-  | { type: 'loadRita'; date: string }
+  | { type: 'loadRita'; date: string; minutes: Minutes }
   | { type: 'erase' };
 
 function without(d: Record<string, number>, keys: Record<string, number>) {
@@ -116,12 +116,15 @@ function reducer(s: State, a: Action): State {
     case 'demoRain': return { ...s, demo: { ...s.demo, rain: a.on } };
     case 'demoClear': return { ...s, demo: { ...s.demo, disruptions: [], rain: false } };
     case 'demoClock': return { ...s, demo: { ...s.demo, clock: a.minutes, clockSetAt: Date.now() } };
-    case 'loadRita':
+    case 'loadRita': {
+      // Prefer the real clock: Rita's day is shifted so routes and departures are today's real ones.
+      const live = ritaDayNow(a.date, a.minutes, s.settings.lang);
       return {
         ...initial, settings: s.settings, onboarded: true,
-        stops: ritaDay(a.date, s.settings.lang),
-        demo: { ...initial.demo, clock: 10 * 60 + 12, clockSetAt: Date.now() },
+        stops: live ?? ritaDay(a.date, s.settings.lang),
+        demo: live ? { ...initial.demo } : { ...initial.demo, clock: RITA_NOW, clockSetAt: Date.now() },
       };
+    }
     case 'erase': return { ...initial, settings: { ...DEFAULT_SETTINGS, lang: s.settings.lang } };
   }
 }

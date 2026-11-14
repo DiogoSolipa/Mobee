@@ -34,3 +34,19 @@ export const DEFAULT_SETTINGS: Settings = {
   name: 'Rita',
   notifications: true,
 };
+
+/** The moment in Rita's story: her 09:30 meeting has just ended. */
+export const RITA_NOW = 10 * 60 + 12;
+
+/**
+ * Rita's day placed on the real clock: every stop shifts so that "now" is the moment in her story,
+ * so routes and departures are the real ones for the next hours. Returns null when the shifted day
+ * would run past midnight (late in the evening): the caller falls back to a simulated clock.
+ */
+export function ritaDayNow(date: ISODate, nowMinutes: number, lang: Lang = 'en'): Stop[] | null {
+  const offset = Math.round((nowMinutes - RITA_NOW) / 5) * 5;
+  const stops = ritaDay(date, lang).map((s) => ({ ...s, start: s.start + offset }));
+  const morning = stops.filter((s) => s.start + s.duration <= 23 * 60 + 45);
+  // Keep the day only if the core story (meeting → pickup → lunch) still fits today.
+  return morning.some((s) => s.id === 's_lunch') && stops[0].start >= 0 ? morning : null;
+}

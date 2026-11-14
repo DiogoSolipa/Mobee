@@ -5,7 +5,7 @@ import { LateSheet, StopSheet } from '@/components/app/Sheets';
 import { TopBar } from '@/components/app/Shell';
 import { Timeline } from '@/components/app/Timeline';
 import { Button, Icon, Segmented } from '@/components/ds';
-import { addDays, longDate } from '@/lib/domain/time';
+import { addDays, fmt, lisbonNow, longDate } from '@/lib/domain/time';
 import type { Priority, Stop } from '@/lib/domain/types';
 import { buildTimeline, endOf, stopsOn } from '@/lib/engine/schedule';
 import { t } from '@/lib/i18n';
@@ -52,6 +52,13 @@ export default function Today() {
       </div>
 
       {feedsDown && !empty ? <div className="banner" role="status"><Icon name="alert" size={18} />{t(lang, 'live.unavailable')}</div> : null}
+      {state.demo.clock !== null && !empty ? (
+        <div className="banner" role="status">
+          <Icon name="clock" size={18} />
+          <span style={{ flex: 1 }}>{t(lang, 'demo.clockBanner', { time: fmt(now.minutes) })}</span>
+          <button type="button" className="mb-btn mb-btn--quiet" style={{ minHeight: 32, padding: '0 8px' }} onClick={() => dispatch({ type: 'demoClock', minutes: null })}>{t(lang, 'demo.clockReal')}</button>
+        </div>
+      ) : null}
       {routing.error && !empty ? <div className="banner" role="status"><Icon name="route" size={18} />{t(lang, 'route.down')}</div> : null}
 
       <div id="proposal"><ReplanCard /></div>
@@ -61,7 +68,7 @@ export default function Today() {
           <h2>{t(lang, 'empty.title')}</h2>
           <p className="muted">{t(lang, 'empty.body')}</p>
           <div className="stack">
-            <Button variant="primary" size="lg" block onClick={() => dispatch({ type: 'loadRita', date: now.date })}>{t(lang, 'empty.demo')}</Button>
+            <Button variant="primary" size="lg" block onClick={() => dispatch({ type: 'loadRita', date: now.date, minutes: lisbonNow().minutes })}>{t(lang, 'empty.demo')}</Button>
             <Button variant="secondary" size="lg" block icon="stop" onClick={() => setSheet({ kind: 'stop', stop: null })}>{t(lang, 'empty.add')}</Button>
           </div>
         </section>

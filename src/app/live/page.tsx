@@ -94,7 +94,7 @@ export default function Live() {
         </div>
         <div className="row">
           <Button variant="quiet" onClick={() => dispatch({ type: 'demoClear' })}>{t(lang, 'demo.clear')}</Button>
-          <Button variant="quiet" onClick={() => dispatch({ type: 'loadRita', date: now.date })}>{t(lang, 'demo.reset')}</Button>
+          <Button variant="quiet" onClick={() => dispatch({ type: 'loadRita', date: now.date, minutes: lisbonNow().minutes })}>{t(lang, 'demo.reset')}</Button>
         </div>
       </section>
     </SubPage>
