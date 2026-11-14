@@ -70,6 +70,9 @@ describe('line normalisation', () => {
   });
   it('reads CP lines', () => expect(linesFromText('Perturbações na Linha de Sintra')).toEqual(['cp:sintra']));
   it('route ids', () => expect(lineFromRoute('ML_AMARELA', 'ML')).toEqual(['ml:yellow']));
+  it('Carris Metropolitana route ids as seen live: "[LA77N]1628_0"', () => {
+    expect(lineFromRoute('[LA77N]1628_0', 'LA77N', 'cm')).toEqual(['cm:1628']);
+  });
   it('delays', () => expect(delayFromText('Atraso de 15 minutos')).toBe(15));
 });
 

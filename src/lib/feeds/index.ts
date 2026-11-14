@@ -37,6 +37,8 @@ async function getJson(url: string, init: RequestInit = {}): Promise<unknown> {
 interface SourceResult { disruptions: Disruption[]; rainProbability?: number }
 interface Source { id: DisruptionSource; label: string; run: () => Promise<SourceResult | 'skipped'> }
 
+export const TML_ALERT_PATHS = ['/alerts/gtfs', '/alerts', '/alerts/gtfs.json'];
+
 let metroToken: { value: string; expires: number } | null = null;
 
 /**
@@ -101,7 +103,16 @@ async function metroBearer(): Promise<string | null> {
 export const SOURCES: Source[] = [
   {
     id: 'tml', label: 'TML GO hub · alerts (all Lisbon operators)',
-    run: async () => ({ disruptions: parseAlerts(await getJson(`${BASES.tml()}/alerts/gtfs`), 'tml', 'tml') }),
+    run: async () => {
+      // The GO hub has moved paths between versions; try the documented ones in order.
+      let lastErr: unknown;
+      for (const path of TML_ALERT_PATHS) {
+        try {
+          return { disruptions: parseAlerts(await getJson(`${BASES.tml()}${path}`), 'tml', 'tml') };
+        } catch (e) { lastErr = e; }
+      }
+      throw lastErr instanceof Error ? new Error(`${lastErr.message} on ${TML_ALERT_PATHS.join(', ')}`) : lastErr;
+    },
   },
   {
     id: 'carris-metropolitana', label: 'Carris Metropolitana · alerts',
@@ -170,4 +181,23 @@ export async function getSnapshot(force = false): Promise<FeedSnapshot> {
 export async function getArrivals(stopId: string): Promise<unknown> {
   if (!/^[0-9A-Za-z_-]{1,20}$/.test(stopId)) throw new Error('Invalid stop id');
   return getJson(`${BASES.cm()}/arrivals/by_stop/${encodeURIComponent(stopId)}`);
+}
+
+/** Probe helper for /api/debug/feeds: status and the first bytes of each candidate endpoint. */
+export async function probe(): Promise<{ url: string; status: number | string; sample: string }[]> {
+  const urls = [
+    ...TML_ALERT_PATHS.map((p) => `${BASES.tml()}${p}`),
+    `${BASES.tml()}/realtime/vehicles/positions`,
+    `${BASES.cm()}/alerts`,
+  ];
+  return Promise.all(urls.map(async (url) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store', headers: { accept: 'application/json' } });
+      return { url, status: res.status, sample: (await res.text()).slice(0, 1500) };
+    } catch (e) {
+      return { url, status: e instanceof Error ? e.message : 'error', sample: '' };
+    } finally { clearTimeout(timer); }
+  }));
 }

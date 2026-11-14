@@ -30,6 +30,12 @@ export function linesFromText(text: string, metroContext = false): string[] {
 
 /** Line key for a GTFS route_id (with the agency, when known). */
 export function lineFromRoute(routeId: string, agencyId?: string, prefix = 'tml'): string[] {
+  // Carris Metropolitana / TML ids look like "[LA77N]1628_0": operator code in brackets, line, pattern suffix.
+  const bracket = /^\[([^\]]+)\](.+)$/.exec(String(routeId));
+  if (bracket) {
+    const line = bracket[2].replace(/_\d+$/, '');
+    return [`${prefix}:${line}`];
+  }
   const r = String(routeId);
   const agency = (agencyId ?? '').toLowerCase();
   if (agency.includes('metro') || agency === 'ml' || /^ml[_-]?/i.test(r)) {
