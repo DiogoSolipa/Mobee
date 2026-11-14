@@ -1,0 +1,11 @@
+{
+  "name": "Mobee",
+  "short_name": "Mobee",
+  "description": "Plans change. Mobee adapts.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf8f2",
+  "theme_color": "#f4b21b",
+  "lang": "pt-PT",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

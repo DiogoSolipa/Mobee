@@ -1,0 +1,80 @@
+'use client';
+import { useState } from 'react';
+import { SubPage } from '@/components/app/Shell';
+import { Button, Chip, Dot, Segmented } from '@/components/ds';
+import type { ContextKey, Lang, Priority, Settings, TravelRules } from '@/lib/domain/types';
+import { contextName, t } from '@/lib/i18n';
+import { useStore } from '@/lib/store';
+
+export default function SettingsPage() {
+  const { state, dispatch, hydrated } = useStore();
+  const s = state.settings;
+  const lang = s.lang;
+  const [confirm, setConfirm] = useState(false);
+  if (!hydrated) return <main className="app" aria-busy="true" />;
+  const set = (patch: Partial<Settings>) => dispatch({ type: 'settings', patch });
+  const rule = (k: keyof TravelRules) => (v: boolean) => set({ rules: { ...s.rules, [k]: v } });
+
+  return (
+    <SubPage title={t(lang, 'settings.title')}>
+      <section className="card stack">
+        <label className="field"><span>{t(lang, 'settings.name')}</span>
+          <input value={s.name} onChange={(e) => set({ name: e.target.value.slice(0, 30) })} autoComplete="given-name" />
+        </label>
+        <Segmented<Lang> label={t(lang, 'settings.language')} value={lang} onChange={(v) => set({ lang: v })}
+          options={[{ value: 'pt', label: 'Português' }, { value: 'en', label: 'English' }]} />
+        <Segmented<Settings['theme']> label={t(lang, 'settings.theme')} value={s.theme} onChange={(v) => set({ theme: v })}
+          options={[{ value: 'auto', label: t(lang, 'theme.auto') }, { value: 'day', label: t(lang, 'theme.day') }, { value: 'night', label: t(lang, 'theme.night') }]} />
+      </section>
+
+      <section className="card stack">
+        <Segmented<Priority> label={t(lang, 'priority.label')} value={s.priority} onChange={(v) => set({ priority: v })}
+          options={[{ value: 'fastest', label: t(lang, 'priority.fastest') }, { value: 'fewest', label: t(lang, 'priority.fewest') }, { value: 'calm', label: t(lang, 'priority.calm') }]} />
+        <div>
+          <h2 className="h2">{t(lang, 'settings.rules')}</h2>
+          <p className="small muted" style={{ margin: '4px 0 12px' }}>{t(lang, 'settings.rulesHint')}</p>
+          <div className="chips">
+            <Chip icon="walk" selected={s.rules.walkUnder10} onToggle={rule('walkUnder10')}>{t(lang, 'rule.walkUnder10')}</Chip>
+            <Chip icon="route" selected={s.rules.avoidHills} onToggle={rule('avoidHills')}>{t(lang, 'rule.avoidHills')}</Chip>
+            <Chip icon="bus" selected={s.rules.busWhenRain} onToggle={rule('busWhenRain')}>{t(lang, 'rule.busWhenRain')}</Chip>
+            <Chip icon="check" selected={s.rules.stepFree} onToggle={rule('stepFree')}>{t(lang, 'rule.stepFree')}</Chip>
+          </div>
+        </div>
+      </section>
+
+      <section className="card stack">
+        <div>
+          <h2 className="h2">{t(lang, 'settings.contexts')}</h2>
+          <p className="small muted" style={{ margin: '4px 0 0' }}>{t(lang, 'settings.contextsHint')}</p>
+        </div>
+        {(['work', 'home', 'errand', 'self'] as ContextKey[]).map((k) => (
+          <label key={k} className="field">
+            <span className="row" style={{ gap: 8 }}><Dot context={k} />{contextName(lang, k, s.contextNames)}</span>
+            <input value={contextName(lang, k, s.contextNames)} maxLength={20}
+              onChange={(e) => set({ contextNames: { ...s.contextNames, [k]: e.target.value } })} />
+          </label>
+        ))}
+      </section>
+
+      <section className="card stack">
+        <label className="toggle">
+          <span>{t(lang, 'settings.notifications')}<small>{t(lang, 'settings.notificationsHint')}</small></span>
+          <input type="checkbox" checked={s.notifications} onChange={async (e) => {
+            const on = e.target.checked;
+            set({ notifications: on });
+            if (on && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { /* ignored */ } }
+          }} />
+        </label>
+      </section>
+
+      <section className="card stack">
+        <h2 className="h2">{t(lang, 'settings.data')}</h2>
+        <p className="small muted" style={{ margin: 0 }}>{t(lang, 'settings.dataHint')}</p>
+        <Button variant="danger" onClick={() => { if (confirm) { dispatch({ type: 'erase' }); setConfirm(false); } else setConfirm(true); }}>
+          {confirm ? t(lang, 'settings.eraseConfirm') : t(lang, 'settings.erase')}
+        </Button>
+        <p className="small muted" style={{ margin: 0 }}>{t(lang, 'settings.about')}</p>
+      </section>
+    </SubPage>
+  );
+}

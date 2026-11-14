@@ -1,0 +1,88 @@
+/* Mobee design tokens — generated from the Mobee design system (tokens.json).
+   Two themes: Day (default) and Night. Set data-theme="night" on any element to switch a subtree. */
+
+:root,
+[data-theme='day'] {
+  --surface: #fbf8f2;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f2ede3;
+  --line: #e4ddd0;
+  --line-strong: #858d90;
+  --ink: #172326;
+  --ink-muted: #5a6467;
+  --deep: #172326;
+  --on-deep: #fbf8f2;
+  --honey: #f4b21b;
+  --honey-hover: #e9a50e;
+  --honey-soft: #fdefc8;
+  --on-honey: #1b1708;
+  --honey-ink: #8a5a00;
+  --route: #1f7a6c;
+  --route-soft: #ddf1ec;
+  --on-route: #ffffff;
+  --route-ink: #17665a;
+  --alert: #c2410c;
+  --alert-soft: #fce6da;
+  --alert-ink: #a8360a;
+  --focus: #17665a;
+  --cat-work: #3e5c8a;
+  --cat-home: #8a4f7d;
+  --cat-errand: #a65a16;
+  --cat-self: #4e7d3a;
+  --shadow-1: 0 1px 2px rgba(23, 35, 38, 0.06), 0 6px 16px rgba(23, 35, 38, 0.07);
+  --shadow-2: 0 2px 4px rgba(23, 35, 38, 0.06), 0 16px 40px rgba(23, 35, 38, 0.12);
+  color-scheme: light;
+}
+
+[data-theme='night'] {
+  --surface: #11181b;
+  --surface-raised: #1a2327;
+  --surface-sunken: #0b1013;
+  --line: #2c383d;
+  --line-strong: #6b787d;
+  --ink: #f2eee6;
+  --ink-muted: #a3adb0;
+  --deep: #1f3a3f;
+  --on-deep: #f2eee6;
+  --honey: #f6be3a;
+  --honey-hover: #f8c85a;
+  --honey-soft: #3a3018;
+  --on-honey: #1b1708;
+  --honey-ink: #f6be3a;
+  --route: #4cc2ae;
+  --route-soft: #15332f;
+  --on-route: #08201c;
+  --route-ink: #6fd6c3;
+  --alert: #ff8a5c;
+  --alert-soft: #3d2016;
+  --alert-ink: #ff9b73;
+  --focus: #f6be3a;
+  --cat-work: #8eadd8;
+  --cat-home: #d99bc8;
+  --cat-errand: #e39a5b;
+  --cat-self: #9ccb7e;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 2px 4px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+:root {
+  --font-display: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif;
+  --font-sans: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+  --tap-target: 48px;
+  --dur-state: 200ms;
+  --dur-replan: 320ms;
+}
