@@ -9,7 +9,7 @@ This is the foundation for the Mobee pilot. It's a Next.js app that runs on Verc
 ```bash
 npm install
 npm run dev        # http://localhost:3000
-npm test           # 40 tests: replan engine + feed parsers
+npm test           # 52 tests: replan engine, trip planner, feed parsers
 npm run build      # production build
 ```
 
@@ -53,6 +53,27 @@ If a source fails, the Live screen says so, and Today shows "Live data unavailab
 3. Check how the GO hub names Metro and CP routes in `informed_entity` (for example `route_id`, `agency_id`), and adjust `lineFromRoute()` in `src/lib/feeds/lines.ts` if needed. That mapping is what links an alert to a person's leg.
 4. One open-source client reported a 404 on the GO hub's vehicle-positions endpoint in early November 2026. Mobee only uses `/alerts/gtfs` for now. If paths change, set `TML_GO_BASE`.
 
+## Trip planner
+
+Legs come from a real trip planner: **MOTIS 2** (open source), via `/api/legs`. It combines the operators' GTFS timetables, live data where available, and OpenStreetMap for walking, with elevation. No distances are guessed: if a route isn't loaded yet, the leg says "Finding route…" and Mobee doesn't propose anything until it has one.
+
+- **How a leg is chosen** (`src/lib/engine/travel.ts`, `MatrixPlanner`): from the planner's options, Mobee keeps only departures you can still catch, and the wait counts. It then:
+  - drops lines that are suspended and adds live delays;
+  - applies your rules: "Walk under 10 min"; "Avoid hills", using the metres climbed on the walking route; "Bus when it rains"; "Step-free", which asks the planner for wheelchair routes;
+  - scores what's left by your priority.
+- **Place search** (`/api/places`): the stop sheet searches places and addresses around Lisbon with the same planner's geocoder. The saved places are shortcuts.
+- **Which planner**: `TRIP_PLANNER_URL` defaults to `https://api.transitous.org`, a community MOTIS instance. Its usage policy is for open-source, non-commercial projects with light use. More than about 720 route requests a day has to be agreed with them, and commercial use is not allowed. Mobee caches every route for 10 minutes, asks only for the legs on screen or in a proposal, and sends an identifying `User-Agent` (`TRIP_PLANNER_USER_AGENT`). That is fine for the pilot.
+- **Production**: run your own MOTIS 2 server (it runs on modest hardware, for example a small VM on Railway, Render or Fly) and point `TRIP_PLANNER_URL` at it. The code doesn't change. Feeds for the Lisbon area:
+  - OpenStreetMap: Portugal extract from Geofabrik (`portugal-latest.osm.pbf`)
+  - Carris Metropolitana: `https://api.carrismetropolitana.pt/gtfs`
+  - Carris: `https://gateway.carris.pt/gateway/gtfs/api/v2.8/GTFS`
+  - Transtejo/Soflusa: `https://api.transtejo.pt/files/GTFS.zip`
+  - TML unified plans (GO hub, organisation `0XJC9`): `/v1/0XJC9/plans/gtfs` (check the path in the GO hub docs)
+  - Metro de Lisboa, CP and Fertagus: from their open-data pages or the Mobility Database
+
+  Follow the MOTIS README (`motis config <osm.pbf> <gtfs...>`, then `motis import` and `motis server`). Add GTFS-RT feeds for live delays.
+- **Debug**: `/api/debug/motis` shows the planner's normalised options for three of Rita's legs, and `/api/debug/feeds` shows the raw alert feeds. Remove both before a public launch.
+
 ## How it's built
 
 ```
@@ -70,7 +91,8 @@ src/
   components/app/         ReplanCard, Timeline, Stop / Leaving-later sheets, shell
   lib/
     domain/               Types (Stop, Leg, Disruption, Proposal…), Lisbon time, place catalogue
-    engine/travel.ts      TripPlanner interface + EstimatePlanner (distance-based)
+    engine/travel.ts      TripPlanner interface + MatrixPlanner (real routes, rules, disruptions)
+    planner/              MOTIS client (server) + response normalisation
     engine/schedule.ts    Timeline + stop status (on time / adjusted / at risk)
     engine/triggers.ts    Disruptions → triggers for the next 3 h; merge; de-duplicate after Keep
     engine/replan.ts      The replan engine (pure, deterministic, tested)
@@ -94,7 +116,7 @@ Fixed stops never move. If a fixed stop can't be reached, the prompt says so and
 | Area | Status |
 | --- | --- |
 | Day plan, stops, fixed, flexible (today / window / before a day) (FR-01–04) | Done. Opening hours are supported in the engine, but there's no input field yet |
-| Timeline, legs, statuses, previous time (FR-06–08) | Done. Legs are **estimates** (see below) |
+| Timeline, legs, statuses, previous time (FR-06–08) | Done, with **real routes** from the trip planner (see below) |
 | Triggers: leaving later, transit, rain, merge, de-duplicate (FR-09–13) | Done |
 | Replan engine, priorities, at-risk, defer to next day, why-line (FR-14–18) | Done, with tests (Rita case) |
 | Proposal, Adjust, Keep, Undo, live update (FR-19–23) | Done |
@@ -107,7 +129,7 @@ Fixed stops never move. If a fixed stop can't be reached, the prompt says so and
 ## Next steps, in order
 
 1. **Probe the feeds** (above) and fix the line mapping with real data.
-2. **Trip planner.** Replace `EstimatePlanner` with OpenTripPlanner 2, loaded with TML's unified GTFS (`/v1/plans/gtfs`), OpenStreetMap and elevation data, behind the same `TripPlanner` interface. Legs then become real, and "Avoid hills" and "Step-free" become exact.
+2. **Own trip planner for production.** Run MOTIS yourself (see "Trip planner" below) and set `TRIP_PLANNER_URL`.
 3. **Accounts and storage.** Sign in with Apple, Google or an email link, and keep plans in an EU-hosted Postgres (for example Vercel Postgres or Supabase in an EU region). The reducer stays the same; `load`/`save` in `store.tsx` become API calls.
 4. **Real push.** Web Push (VAPID) with a service worker, and a Vercel Cron job that runs `detectTriggers` for each user's next 3 hours.
 5. **Native shell.** If the pilot needs the lock-screen glance, wrap this app (Capacitor), or port the screens to React Native. The engine, feeds and i18n are plain TypeScript and move as they are.
