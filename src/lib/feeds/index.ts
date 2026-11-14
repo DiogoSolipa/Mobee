@@ -157,11 +157,11 @@ export const SOURCES: Source[] = [
   },
 ];
 
-/** Same alert published by two sources (GO and Carris Metropolitana) → keep one. */
+/** Same alert published by two sources (GO and Carris Metropolitana, with different line prefixes) → keep the first (GO). */
 function dedupe(list: Disruption[]): Disruption[] {
   const seen = new Set<string>();
   return list.filter((d) => {
-    const k = `${d.effect}|${[...d.lines].sort().join(',')}|${d.header.pt ?? d.header.en ?? ''}`;
+    const k = `${d.effect}|${(d.header.pt ?? d.header.en ?? '').trim().toLowerCase()}|${d.start ?? ''}`;
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
