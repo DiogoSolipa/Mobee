@@ -22,9 +22,13 @@ export function endOf(s: Stop): Minutes {
 /** Build the journey timeline for one day: legs between consecutive stops and each stop's status. */
 export function buildTimeline(dayStops: Stop[], planner: TripPlanner, ctx: LegContext, now?: Minutes): TimelineEntry[] {
   const out: TimelineEntry[] = [];
+  // Where the person physically is: online/addressless items (noTravel) don't move them (V2-23).
+  let place: Stop | undefined;
   dayStops.forEach((stop, i) => {
     const prev = dayStops[i - 1];
-    const leg = prev ? planner.leg(prev, stop, ctx) : undefined;
+    const from = place;
+    const leg = from && !stop.noTravel ? planner.leg(from, stop, ctx, prev ? endOf(prev) : undefined) : undefined;
+    if (!stop.noTravel) place = stop;
     // Only routed legs can make a stop late: a pending/unavailable route never invents a delay.
     const arrival = prev && leg && leg.status === 'routed' ? endOf(prev) + leg.minutes : stop.start;
     const lateBy = Math.max(0, arrival - stop.start);

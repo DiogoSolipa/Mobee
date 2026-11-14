@@ -104,7 +104,10 @@ function AgentLink() {
       <p className="small muted" style={{ margin: 0 }}>{t(lang, 'agent.hint')}</p>
       {fresh ? (
         <>
-          <input className="field" readOnly value={fresh} aria-label={t(lang, 'agent.title')} onFocus={(e) => e.currentTarget.select()} style={{ fontFamily: 'monospace', fontSize: 13 }} />
+          <label className="field">
+            <span className="mb-sr">{t(lang, 'agent.title')}</span>
+            <input readOnly value={fresh} onFocus={(e) => e.currentTarget.select()} style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }} />
+          </label>
           <p className="small muted" style={{ margin: 0 }}>{t(lang, 'agent.shownOnce')}</p>
           <Button variant="primary" data-action="copy-agent-link" onClick={copy}>{copied ? t(lang, 'agent.copied') : t(lang, 'agent.copy')}</Button>
         </>

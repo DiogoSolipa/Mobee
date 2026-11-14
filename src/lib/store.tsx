@@ -2,7 +2,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { lisbonNow } from './domain/time';
 import type { Disruption, FeedSnapshot, Minutes, Proposal, Settings, Stop, Trigger } from './domain/types';
+import { mergeCalendar, sameCalendar } from './calendar/merge';
 import { replan, triggerSignature, undoDeadline } from './engine/replan';
+import type { Coord } from './engine/travel';
 import { MatrixPlanner, mergeRoutes, type LegMiss, type RouteEntry } from './engine/travel';
 import { detectTriggers, dismissKeys, filterDismissed, type Detection } from './engine/triggers';
 import { t } from './i18n';
@@ -68,6 +70,8 @@ type Action =
   | { type: 'demoClear' }
   | { type: 'demoClock'; minutes: Minutes | null }
   | { type: 'loadRita'; date: string; minutes: Minutes }
+  | { type: 'addStops'; stops: Stop[] }
+  | { type: 'calendar'; from: string; to: string; stops: Stop[] }
   | { type: 'erase' };
 
 function without(d: Record<string, number>, keys: Record<string, number>) {
@@ -128,6 +132,8 @@ function reducer(s: State, a: Action): State {
         demo: live ? { ...initial.demo } : { ...initial.demo, clock: RITA_NOW, clockSetAt: Date.now() },
       };
     }
+    case 'addStops': return { ...s, onboarded: true, stops: [...s.stops.filter((x) => !a.stops.some((n) => n.id === x.id)), ...a.stops] };
+    case 'calendar': return { ...s, stops: mergeCalendar(s.stops, a.from, a.to, a.stops) };
     case 'erase': return { ...initial, settings: { ...DEFAULT_SETTINGS, lang: s.settings.lang } };
   }
 }
@@ -181,6 +187,10 @@ interface Ctx {
   dismissToast: () => void;
   /** Trip planner backed by real routes; legs it has not fetched yet come back 'pending'. */
   planner: MatrixPlanner;
+  /** Current position while the app is open (V2-05); null until the browser gives one. */
+  here: (Coord & { accuracy: number; at: number }) | null;
+  /** 'off' = not signed in or Calendar not granted. */
+  calendar: { status: 'off' | 'syncing' | 'ok' | 'error'; at: number | null };
   routing: { inFlight: number; error: string | null; provider: string | null };
   account: Account;
 }
@@ -395,7 +405,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     const sig = triggerSignature(triggers);
     if (s.proposalState !== 'open' && s.proposal?.signature === sig) return;
-    const p = replan({ stops: s.stops, date: now.date, now: now.minutes, triggers, disruptions: detection.relevant, raining: detection.raining, settings: s.settings, planner });
+    const p = replan({ stops: s.stops, date: now.date, now: now.minutes, triggers, disruptions: detection.relevant, raining: detection.raining, settings: s.settings, planner, here: hereRef.current ?? undefined });
     // The engine asked about routes we don't have yet: wait for them instead of proposing on incomplete data.
     if (planner.pendingHits > pendingBefore) return;
     if (!p) {
@@ -416,6 +426,61 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [hydrated, detection, planner, state.stops, state.settings.priority, state.settings.rules, state.lateTriggers, state.dismissed, state.proposalState, now, allDisruptions]);
 
+  // ---- Where am I (V2-05): only while the app is visible; never stored. ----
+  const [here, setHere] = useState<Ctx['here']>(null);
+  const hereRef = useRef<Coord | null>(null);
+  hereRef.current = here;
+  useEffect(() => {
+    if (!hydrated || typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
+    let id: number | null = null;
+    const start = () => {
+      if (id !== null) return;
+      id = navigator.geolocation.watchPosition(
+        (p) => setHere((prev) => {
+          const next = { lat: p.coords.latitude, lon: p.coords.longitude, accuracy: p.coords.accuracy, at: p.timestamp };
+          // Ignore jitter under ~30 m: every new position re-runs the engine.
+          if (prev && Math.abs(prev.lat - next.lat) < 0.0003 && Math.abs(prev.lon - next.lon) < 0.0003) return prev;
+          return next;
+        }),
+        () => { /* denied or unavailable: plans still work from the previous stop */ },
+        { enableHighAccuracy: false, maximumAge: 60_000, timeout: 20_000 },
+      );
+    };
+    const stop = () => { if (id !== null) navigator.geolocation.clearWatch(id); id = null; };
+    const onVis = () => (document.visibilityState === 'visible' ? start() : stop());
+    onVis();
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
+  }, [hydrated]);
+
+  // ---- Google Calendar → commitments (V2-22): on open and when coming back, at most every 5 min. ----
+  const [calendar, setCalendar] = useState<Ctx['calendar']>({ status: 'off', at: null });
+  const calendarAt = useRef(0);
+  const syncCalendar = useCallback(async (force = false) => {
+    if (!force && Date.now() - calendarAt.current < 5 * 60_000) return;
+    calendarAt.current = Date.now();
+    setCalendar((c) => ({ ...c, status: 'syncing' }));
+    try {
+      const r = await fetch('/api/calendar', { cache: 'no-store' });
+      const j = (await r.json()) as { connected?: boolean; from?: string; to?: string; stops?: Stop[] };
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!j.connected) { setCalendar({ status: 'off', at: null }); return; }
+      const merged = mergeCalendar(stateRef.current.stops, j.from!, j.to!, j.stops ?? []);
+      if (!sameCalendar(merged, stateRef.current.stops)) dispatch({ type: 'calendar', from: j.from!, to: j.to!, stops: j.stops ?? [] });
+      setCalendar({ status: 'ok', at: Date.now() });
+    } catch {
+      setCalendar((c) => ({ ...c, status: 'error' }));
+    }
+  }, []);
+  useEffect(() => {
+    // Wait for the server copy of the plan first, so the merge happens on top of it.
+    if (!remoteOn || account.status !== 'signed-in' || !account.calendar) return;
+    syncCalendar(true);
+    const onVis = () => { if (document.visibilityState === 'visible') syncCalendar(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [remoteOn, account.status, account.calendar, syncCalendar]);
+
   // Day/Night (auto at Lisbon sunset unless locked).
   const theme = state.settings.theme === 'auto' ? autoTheme(tick) : state.settings.theme;
   useEffect(() => {
@@ -425,7 +490,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value: Ctx = {
     state, dispatch, hydrated, now, feed, feedError, refreshFeed: () => refreshFeed(true), detection, theme,
-    toast, dismissToast: () => setToast(null), planner, routing, account,
+    toast, dismissToast: () => setToast(null), planner, routing, account, here, calendar,
   };
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

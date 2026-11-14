@@ -66,6 +66,8 @@ export interface Stop {
   done?: { at: number; how: 'arrived' | 'inferred' | 'calendar' | 'manual' };
   /** Google Calendar event this commitment mirrors (V2-22). */
   calendarEventId?: string;
+  /** Blocks time but needs no trip: online meeting, event with no address (V2-23). You stay where you were. */
+  noTravel?: boolean;
 }
 
 export type StopSource = 'calendar' | 'voice' | 'text' | 'mcp' | 'manual';

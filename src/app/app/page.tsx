@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { Capture } from '@/components/app/Capture';
+import { NowCard } from '@/components/app/NowCard';
 import { ReplanCard } from '@/components/app/ReplanCard';
 import { LateSheet, StopSheet } from '@/components/app/Sheets';
 import { TopBar } from '@/components/app/Shell';
@@ -14,7 +16,7 @@ import { useStore } from '@/lib/store';
 const VISIBLE = 6; // FR-04: next 5–6 stops, the rest one tap away
 
 export default function Today() {
-  const { state, dispatch, hydrated, now, detection, feed, feedError, planner, routing } = useStore();
+  const { state, dispatch, hydrated, now, detection, feed, feedError, planner, routing, calendar, account } = useStore();
   const lang = state.settings.lang;
   const [sheet, setSheet] = useState<{ kind: 'stop'; stop: Stop | null } | { kind: 'late' } | null>(null);
   const [showEarlier, setShowEarlier] = useState(false);
@@ -71,15 +73,21 @@ export default function Today() {
       ) : null}
       {routing.error && !empty ? <div className="banner" role="status"><Icon name="route" size={18} />{t(lang, 'route.down')}</div> : null}
 
+      {calendar.status === 'error' ? <div className="banner" role="status"><Icon name="calendar" size={18} />{t(lang, 'calendar.error')}</div> : null}
+      {calendar.status === 'syncing' && empty ? <div className="banner" role="status" aria-busy="true"><Icon name="calendar" size={18} />{t(lang, 'calendar.syncing')}</div> : null}
+
       <div id="proposal"><ReplanCard /></div>
+
+      {!empty ? <NowCard /> : null}
+      <Capture />
 
       {empty ? (
         <section className="card empty">
           <h2>{t(lang, 'empty.title')}</h2>
           <p className="muted">{t(lang, 'empty.body')}</p>
           <div className="stack">
-            <Button variant="primary" size="lg" block onClick={() => dispatch({ type: 'loadRita', date: now.date, minutes: lisbonNow().minutes })}>{t(lang, 'empty.demo')}</Button>
-            <Button variant="secondary" size="lg" block icon="stop" onClick={() => setSheet({ kind: 'stop', stop: null })}>{t(lang, 'empty.add')}</Button>
+            <Button variant={account.status === 'signed-in' ? 'secondary' : 'primary'} size="lg" block data-action="demo-rita" onClick={() => dispatch({ type: 'loadRita', date: now.date, minutes: lisbonNow().minutes })}>{t(lang, 'empty.demo')}</Button>
+            <Button variant="quiet" size="lg" block icon="stop" data-action="add-stop" onClick={() => setSheet({ kind: 'stop', stop: null })}>{t(lang, 'empty.add')}</Button>
           </div>
         </section>
       ) : (

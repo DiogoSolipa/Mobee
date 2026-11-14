@@ -173,3 +173,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .feeds th { font-size: 13px; color: var(--ink-muted); font-weight: 600; }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .toast { position: fixed; top: calc(env(safe-area-inset-top) + var(--space-3)); left: var(--space-3); right: var(--space-3); z-index: 50; max-width: 448px; margin: 0 auto; animation: mb-up var(--dur-replan) ease-out; }
+
+/* v2: "Agora" card and the capture/confirm card */
+.now { display: flex; flex-direction: column; gap: var(--space-2); border-left: 4px solid var(--route); }
+.now__headline { margin: 0; font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.01em; }
+.now__leg { margin: 0; display: flex; gap: var(--space-2); align-items: flex-start; font-size: 16px; line-height: 22px; }
+.now__leg svg { flex: none; margin-top: 1px; }
+.now__dest { margin: 0; font-size: 16px; line-height: 22px; }
+.now .mb-btn { align-self: flex-start; text-decoration: none; }
+.confirm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.confirm-list__item { display: grid; grid-template-columns: 52px 1fr; gap: var(--space-2); align-items: baseline; padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+.confirm-list__item:last-child { border-bottom: 0; }
+.confirm-list__time { font-weight: 600; }
+.confirm-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }

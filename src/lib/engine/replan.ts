@@ -99,7 +99,8 @@ function evaluate(
 
   for (const s of upcoming) {
     if (deferSet.has(s.id)) { deferred.push(s); continue; }
-    const leg = prev ? planner.leg(prev, s, ctx, cursor) : undefined;
+    // No trip for online/addressless items: you stay where you were (V2-23).
+    const leg = prev && !s.noTravel ? planner.leg(prev, s, ctx, cursor) : undefined;
     const arrive = cursor + (leg?.minutes ?? 0) + (leg ? buffer : 0);
     let start: Minutes;
     let lateBy = 0;
@@ -117,7 +118,7 @@ function evaluate(
     if (start !== s.start) moved++;
     placements.push({ stop: s, start, leg, lateBy });
     cursor = start + s.duration;
-    prev = s;
+    if (!s.noTravel) prev = s;
   }
 
   const lateTotal = fixedLate.reduce((a, f) => a + f.lateBy, 0);
