@@ -33,8 +33,9 @@ export function lineFromRoute(routeId: string, agencyId?: string, prefix = 'tml'
   // Carris Metropolitana / TML ids look like "[LA77N]1628_0": operator code in brackets, line, pattern suffix.
   const bracket = /^\[([^\]]+)\](.+)$/.exec(String(routeId));
   if (bracket) {
+    // Bracketed operator codes are Carris Metropolitana areas, in both the GO hub and CM feeds: one key space.
     const line = bracket[2].replace(/_\d+$/, '');
-    return [`${prefix}:${line}`];
+    return [`cm:${line}`];
   }
   const r = String(routeId);
   const agency = (agencyId ?? '').toLowerCase();

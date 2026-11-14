@@ -25,7 +25,8 @@ export function buildTimeline(dayStops: Stop[], planner: TripPlanner, ctx: LegCo
   dayStops.forEach((stop, i) => {
     const prev = dayStops[i - 1];
     const leg = prev ? planner.leg(prev, stop, ctx) : undefined;
-    const arrival = prev && leg ? endOf(prev) + leg.minutes : stop.start;
+    // Only routed legs can make a stop late: a pending/unavailable route never invents a delay.
+    const arrival = prev && leg && leg.status === 'routed' ? endOf(prev) + leg.minutes : stop.start;
     const lateBy = Math.max(0, arrival - stop.start);
     const happened = now !== undefined && endOf(stop) <= now;
     const moved = !!stop.previous && (stop.previous.start !== stop.start || stop.previous.date !== stop.date);

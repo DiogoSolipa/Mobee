@@ -5,7 +5,7 @@ export type Minutes = number;
 /** Local calendar date, 'YYYY-MM-DD' in Europe/Lisbon. */
 export type ISODate = string;
 
-export type Mode = 'walk' | 'bus' | 'metro' | 'train' | 'ferry' | 'bike' | 'car';
+export type Mode = 'walk' | 'bus' | 'tram' | 'metro' | 'train' | 'ferry' | 'bike' | 'car';
 export type ContextKey = 'work' | 'home' | 'errand' | 'self';
 export type Priority = 'fastest' | 'fewest' | 'calm';
 export type MetroLine = 'yellow' | 'green' | 'blue' | 'red';
@@ -37,6 +37,9 @@ export interface Stop {
   placeId?: string;
   /** Free-text place, shown when placeId is not in the catalogue. */
   placeName: string;
+  /** Coordinates from place search (or the catalogue). Needed for routing. */
+  lat?: number;
+  lon?: number;
   date: ISODate;
   start: Minutes;
   duration: Minutes;
@@ -69,8 +72,34 @@ export interface Leg {
   walkMinutes: number;
   /** Set when a live disruption changed this leg. */
   disruption?: { id: string; delayMin?: number; replaced?: boolean };
-  /** true when timings come from the estimator, not a trip planner. */
-  estimated: boolean;
+  /** 'routed' = from the trip planner; 'pending' = not fetched yet; 'unavailable' = no route found or planner down. */
+  status: 'routed' | 'pending' | 'unavailable';
+  /** First boarding (transit) as minute-of-day, when there is one. */
+  boardAt?: Minutes;
+  /** Board-to-alight summary, e.g. "Saldanha → Alameda". */
+  via?: string;
+  /** Timings include live (GTFS-RT) data. */
+  realtime?: boolean;
+  /** Metres climbed on foot (from OSM elevation). */
+  climbM?: number;
+}
+
+/** One way to make a trip, as returned by the trip planner and normalised (see lib/planner). */
+export interface TripOption {
+  mode: Mode;
+  /** Epoch ms: when you leave the origin / arrive at the destination. Walk-only options are time-independent. */
+  depart?: number;
+  arrive?: number;
+  /** Door-to-door duration in minutes, excluding waiting before departure. */
+  minutes: number;
+  walkMinutes: number;
+  transfers: number;
+  climbM: number;
+  detail: { en: string; pt: string };
+  lines: LineRef[];
+  boardAt?: number;
+  via?: string;
+  realtime: boolean;
 }
 
 export type DisruptionSource = 'tml' | 'carris-metropolitana' | 'metro-lisboa' | 'ipma' | 'demo';

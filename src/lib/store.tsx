@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { lisbonNow } from './domain/time';
 import type { Disruption, FeedSnapshot, Minutes, Proposal, Settings, Stop, Trigger } from './domain/types';
 import { replan, triggerSignature, undoDeadline } from './engine/replan';
-import { EstimatePlanner } from './engine/travel';
+import { MatrixPlanner, mergeRoutes, type LegMiss, type RouteEntry } from './engine/travel';
 import { detectTriggers, dismissKeys, filterDismissed, type Detection } from './engine/triggers';
 import { t } from './i18n';
 import { DEFAULT_SETTINGS, ritaDay } from './seed';
@@ -14,7 +14,6 @@ import { autoTheme } from './theme';
  * When accounts land (FR-31), swap `load`/`save` for the API; the reducer stays the same.
  */
 
-export const planner = new EstimatePlanner();
 const STORAGE_KEY = 'mobee:v1';
 const POLL_MS = 60_000;
 
@@ -155,6 +154,9 @@ interface Ctx {
   theme: 'day' | 'night';
   toast: Toast | null;
   dismissToast: () => void;
+  /** Trip planner backed by real routes; legs it has not fetched yet come back 'pending'. */
+  planner: MatrixPlanner;
+  routing: { inFlight: number; error: string | null; provider: string | null };
 }
 
 const StoreContext = createContext<Ctx | null>(null);
@@ -185,6 +187,51 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<Toast | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // ---- Real routes (trip planner) ----
+  const [routes, setRoutes] = useState<Map<string, RouteEntry>>(() => new Map());
+  const planner = useMemo(() => new MatrixPlanner(routes), [routes]);
+  const [routing, setRouting] = useState<{ inFlight: number; error: string | null; provider: string | null }>({ inFlight: 0, error: null, provider: null });
+  const inFlight = useRef(new Set<string>());
+  const fetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // After every render: fetch whatever the planner was asked about and could not answer.
+  useEffect(() => {
+    const wanted = [...planner.misses.entries()].filter(([id]) => !inFlight.current.has(id));
+    if (!wanted.length || fetchTimer.current) return;
+    fetchTimer.current = setTimeout(async () => {
+      fetchTimer.current = null;
+      const batch = [...planner.misses.entries()].filter(([id]) => !inFlight.current.has(id)).slice(0, 40);
+      if (!batch.length) return;
+      batch.forEach(([id]) => inFlight.current.add(id));
+      setRouting((r) => ({ ...r, inFlight: r.inFlight + batch.length }));
+      try {
+        const res = await fetch('/api/legs', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ requests: batch.map(([id, m]: [string, LegMiss]) => ({ key: id, from: m.from, to: m.to, departAt: m.departAt, wheelchair: m.wheelchair })) }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as { provider?: string; results: Record<string, { options: import('./domain/types').TripOption[]; error?: string }> };
+        setRoutes((prev) => {
+          let next = prev;
+          for (const [id, m] of batch) {
+            const r = json.results[id];
+            next = mergeRoutes(next, m.key, m.departAt, r?.options ?? [], r?.error ?? 'No route');
+          }
+          return next;
+        });
+        const errors = Object.values(json.results).filter((r) => r.error && !r.options.length).length;
+        setRouting((r) => ({ ...r, provider: json.provider ?? r.provider, error: errors === batch.length ? Object.values(json.results)[0]?.error ?? 'Trip planner unavailable' : null }));
+      } catch (e) {
+        setRoutes((prev) => batch.reduce((next, [, m]) => mergeRoutes(next, m.key, m.departAt, [], 'Trip planner unavailable'), prev));
+        setRouting((r) => ({ ...r, error: e instanceof Error ? e.message : 'Trip planner unavailable' }));
+      } finally {
+        batch.forEach(([id]) => inFlight.current.delete(id));
+        setRouting((r) => ({ ...r, inFlight: Math.max(0, r.inFlight - batch.length) }));
+      }
+    }, 120);
+  });
 
   // Hydrate from the device, pick the phone's language on first run.
   useEffect(() => {
@@ -231,13 +278,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const detection = useMemo(
     () => detectTriggers({ stops: state.stops, date: now.date, now: now.minutes, nowEpoch: now.epoch, disruptions: allDisruptions, rainProbability, settings: state.settings, planner }),
-    [state.stops, now, allDisruptions, rainProbability, state.settings],
+    [state.stops, now, allDisruptions, rainProbability, state.settings, planner],
   );
 
   // The replan loop: triggers in → one proposal out (principles 1 and 4).
   useEffect(() => {
     if (!hydrated) return;
     const s = stateRef.current;
+    const pendingBefore = planner.pendingHits;
     const triggers = [...s.lateTriggers, ...filterDismissed(detection.triggers, s.dismissed)];
     if (!triggers.length) {
       if (s.proposalState === 'open') dispatch({ type: 'proposal', proposal: null });
@@ -247,6 +295,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const sig = triggerSignature(triggers);
     if (s.proposalState !== 'open' && s.proposal?.signature === sig) return;
     const p = replan({ stops: s.stops, date: now.date, now: now.minutes, triggers, disruptions: detection.relevant, raining: detection.raining, settings: s.settings, planner });
+    // The engine asked about routes we don't have yet: wait for them instead of proposing on incomplete data.
+    if (planner.pendingHits > pendingBefore) return;
     if (!p) {
       if (s.proposalState === 'open') dispatch({ type: 'proposal', proposal: null });
       return;
@@ -263,7 +313,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         try { new Notification(msg.title, { body: msg.body, tag: 'mobee-proposal' }); } catch { /* not allowed here */ }
       }
     }
-  }, [hydrated, detection, state.stops, state.settings.priority, state.settings.rules, state.lateTriggers, state.dismissed, state.proposalState, now, allDisruptions]);
+  }, [hydrated, detection, planner, state.stops, state.settings.priority, state.settings.rules, state.lateTriggers, state.dismissed, state.proposalState, now, allDisruptions]);
 
   // Day/Night (auto at Lisbon sunset unless locked).
   const theme = state.settings.theme === 'auto' ? autoTheme(tick) : state.settings.theme;
@@ -274,7 +324,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value: Ctx = {
     state, dispatch, hydrated, now, feed, feedError, refreshFeed: () => refreshFeed(true), detection, theme,
-    toast, dismissToast: () => setToast(null),
+    toast, dismissToast: () => setToast(null), planner, routing,
   };
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

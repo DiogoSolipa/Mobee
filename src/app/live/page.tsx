@@ -13,7 +13,7 @@ const DEMO = {
 };
 
 export default function Live() {
-  const { state, dispatch, feed, feedError, refreshFeed, now, hydrated } = useStore();
+  const { state, dispatch, feed, feedError, refreshFeed, now, hydrated, routing } = useStore();
   const lang = state.settings.lang;
   const [busy, setBusy] = useState(false);
   if (!hydrated) return <main className="app" aria-busy="true" />;
@@ -45,7 +45,16 @@ export default function Live() {
           <Button variant="quiet" icon="replan" disabled={busy} onClick={async () => { setBusy(true); await refreshFeed(); setBusy(false); }}>{t(lang, 'live.refresh')}</Button>
         </div>
         {feed?.rainProbability !== undefined ? <p className="small" style={{ margin: 0 }}>{t(lang, 'live.rain', { n: Math.round(feed.rainProbability) })}</p> : null}
-        <p className="small muted" style={{ margin: 0 }}>{t(lang, 'live.estimated')}</p>
+      </section>
+
+      <section className="card stack">
+        <h2 className="h2">{t(lang, 'live.planner')}</h2>
+        <div className="row">
+          {routing.error ? <StatusPill status="at-risk">{t(lang, 'live.down')}</StatusPill> : <StatusPill status="on-time">{t(lang, 'live.ok')}</StatusPill>}
+          <span className="small mono">{routing.provider ?? '…'}</span>
+        </div>
+        <p className="small muted" style={{ margin: 0 }}>{t(lang, 'live.plannerBody', { provider: routing.provider ?? 'MOTIS' })}</p>
+        {routing.error ? <p className="small" style={{ margin: 0 }}>{routing.error}</p> : null}
       </section>
 
       <section className="section">

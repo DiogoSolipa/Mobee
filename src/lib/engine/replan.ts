@@ -87,7 +87,7 @@ function evaluate(
 
   for (const s of upcoming) {
     if (deferSet.has(s.id)) { deferred.push(s); continue; }
-    const leg = prev ? planner.leg(prev, s, ctx) : undefined;
+    const leg = prev ? planner.leg(prev, s, ctx, cursor) : undefined;
     const arrive = cursor + (leg?.minutes ?? 0) + (leg ? buffer : 0);
     let start: Minutes;
     let lateBy = 0;

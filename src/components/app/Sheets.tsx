@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { Lang } from '@/lib/domain/types';
 import { Button, Chip } from '@/components/ds';
 import { PLACES, PLACE_BY_ID } from '@/lib/domain/places';
 import { addDays, fmt, parseHHMM } from '@/lib/domain/time';
@@ -70,8 +71,12 @@ export function StopSheet({ stop, onClose }: { stop: Stop | null; onClose: () =>
   const today = now.date;
   const editing = !!stop;
   const [title, setTitle] = useState(stop?.title ?? '');
-  const [placeId, setPlaceId] = useState(stop?.placeId ?? (stop ? '' : 'saldanha'));
-  const [placeName, setPlaceName] = useState(stop && !stop.placeId ? stop.placeName : '');
+  const initialPlace = stop ? (() => {
+    const p = stop.placeId ? PLACE_BY_ID[stop.placeId] : undefined;
+    const lat = stop.lat ?? p?.lat, lon = stop.lon ?? p?.lon;
+    return lat !== undefined && lon !== undefined ? { name: stop.placeName, lat, lon, placeId: stop.placeId } : null;
+  })() : null;
+  const [place, setPlace] = useState<ChosenPlace | null>(initialPlace);
   const [date, setDate] = useState(stop?.date ?? today);
   const [time, setTime] = useState(fmt(stop?.start ?? Math.min(23 * 60, Math.ceil((now.minutes + 30) / 15) * 15)));
   const [duration, setDuration] = useState(stop?.duration ?? 30);
@@ -84,11 +89,10 @@ export function StopSheet({ stop, onClose }: { stop: Stop | null; onClose: () =>
   const [note, setNote] = useState(stop?.note ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const valid = title.trim().length > 0 && (placeId || placeName.trim()) && (when !== 'set' || parseHHMM(time) !== null);
+  const valid = title.trim().length > 0 && !!place && (when !== 'set' || parseHHMM(time) !== null);
 
   function save() {
-    if (!valid) return;
-    const place = placeId ? PLACE_BY_ID[placeId] : undefined;
+    if (!valid || !place) return;
     const others = state.stops.filter((s) => s.id !== stop?.id);
     let start = parseHHMM(time) ?? DAY_START;
     let flex: FlexWindow | undefined;
@@ -106,8 +110,10 @@ export function StopSheet({ stop, onClose }: { stop: Stop | null; onClose: () =>
     const next: Stop = {
       id: stop?.id ?? `s_${Date.now().toString(36)}`,
       title: title.trim(),
-      placeId: place?.id,
-      placeName: place ? `${place.name}${place.area && place.area !== place.name ? ` · ${place.area}` : ''}` : placeName.trim(),
+      placeId: place.placeId,
+      placeName: place.name,
+      lat: place.lat,
+      lon: place.lon,
       date, start, duration, context,
       fixed: when === 'set' ? fixed : false,
       flex,
@@ -124,17 +130,7 @@ export function StopSheet({ stop, onClose }: { stop: Stop | null; onClose: () =>
         <label className="field"><span>{t(lang, 'field.title')}</span>
           <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} autoComplete="off" />
         </label>
-        <label className="field"><span>{t(lang, 'field.place')}</span>
-          <select value={placeId} onChange={(e) => setPlaceId(e.target.value)}>
-            {PLACES.map((p) => <option key={p.id} value={p.id}>{p.name}{p.area && p.area !== p.name ? ` · ${p.area}` : ''}</option>)}
-            <option value="">{t(lang, 'field.placeOther')}</option>
-          </select>
-        </label>
-        {!placeId ? (
-          <label className="field"><span>{t(lang, 'field.placeName')}</span>
-            <input value={placeName} onChange={(e) => setPlaceName(e.target.value)} maxLength={60} />
-          </label>
-        ) : null}
+        <PlacePicker lang={lang} value={place} onChange={setPlace} />
         <div className="field__row">
           <label className="field"><span>{t(lang, 'field.date')}</span>
             <select value={date} onChange={(e) => setDate(e.target.value)}>
@@ -196,5 +192,55 @@ export function StopSheet({ stop, onClose }: { stop: Stop | null; onClose: () =>
         </div>
       </form>
     </Sheet>
+  );
+}
+
+interface ChosenPlace { name: string; lat: number; lon: number; placeId?: string }
+interface PlaceHit { id: string; name: string; area?: string; lat: number; lon: number }
+
+/** Place search: saved places first, then the trip planner's geocoder (OpenStreetMap + transit stops) around Lisbon. */
+function PlacePicker({ lang, value, onChange }: { lang: Lang; value: ChosenPlace | null; onChange: (p: ChosenPlace | null) => void }) {
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState<PlaceHit[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 3) { setHits([]); return; }
+    const ctrl = new AbortController();
+    const timer = setTimeout(async () => {
+      setBusy(true);
+      try {
+        const res = await fetch(`/api/places?q=${encodeURIComponent(query)}`, { signal: ctrl.signal });
+        const json = (await res.json()) as { results?: PlaceHit[] };
+        setHits(json.results ?? []);
+      } catch { /* aborted or offline */ } finally { setBusy(false); }
+    }, 300);
+    return () => { clearTimeout(timer); ctrl.abort(); };
+  }, [q]);
+  const label = (p: { name: string; area?: string }) => `${p.name}${p.area && p.area !== p.name ? ` · ${p.area}` : ''}`;
+  const saved = PLACES.filter((p) => !q.trim() || label(p).toLowerCase().includes(q.trim().toLowerCase())).slice(0, q.trim() ? 4 : 6);
+  return (
+    <div className="field">
+      <span>{t(lang, 'field.place')}</span>
+      {value ? (
+        <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+          <span><strong>{value.name}</strong></span>
+          <button type="button" className="mb-btn mb-btn--quiet" onClick={() => onChange(null)}>{t(lang, 'edit')}</button>
+        </div>
+      ) : (
+        <>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t(lang, 'field.placeSearch')} autoComplete="off" aria-label={t(lang, 'field.placeSearch')} />
+          <ul className="places">
+            {saved.map((p) => (
+              <li key={p.id}><button type="button" onClick={() => onChange({ name: label(p), lat: p.lat!, lon: p.lon!, placeId: p.id })}>{p.name}<small>{p.area} · {t(lang, 'field.placeSaved')}</small></button></li>
+            ))}
+            {hits.map((h) => (
+              <li key={h.id}><button type="button" onClick={() => onChange({ name: label(h), lat: h.lat, lon: h.lon })}>{h.name}{h.area ? <small>{h.area}</small> : null}</button></li>
+            ))}
+          </ul>
+          {q.trim().length >= 3 && !busy && !hits.length ? <p className="small muted" style={{ margin: 0 }}>{t(lang, 'field.placeNone')}</p> : null}
+        </>
+      )}
+    </div>
   );
 }

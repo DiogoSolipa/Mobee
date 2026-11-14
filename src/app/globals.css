@@ -106,6 +106,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mb-tl__leg strong { color: var(--ink); font-weight: 600; }
 .mb-tl__leg .mb-icon { color: var(--route-ink); }
 .mb-tl__leg--risk, .mb-tl__leg--risk .mb-icon { color: var(--alert-ink); }
+.mb-tl__via { display: block; font-size: 13px; line-height: 18px; color: var(--ink-muted); }
+.mb-tl__live { color: var(--route-ink); font-weight: 600; }
+.mb-tl__leg .mono { font-size: 13px; }
+.places { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.places li + li { border-top: 1px solid var(--line); }
+.places button { width: 100%; min-height: var(--tap-target); text-align: left; padding: 8px 12px; background: var(--surface-raised); border: 0; cursor: pointer; }
+.places button:hover { background: var(--surface-sunken); }
+.places small { display: block; color: var(--ink-muted); font-size: 13px; line-height: 18px; }
 
 .mb-notif { display: grid; grid-template-columns: 40px 1fr auto; gap: var(--space-3); align-items: start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: var(--shadow-2); border: 1px solid var(--line); }
 .mb-notif__icon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--honey); color: var(--on-honey); }

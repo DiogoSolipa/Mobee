@@ -23,19 +23,39 @@ export function Timeline({ entries, onEdit, label }: { entries: TimelineEntry[];
   );
 }
 
+const MODE_ICON: Record<string, string> = { walk: 'walk', bus: 'bus', tram: 'bus', metro: 'metro', train: 'metro', ferry: 'route', bike: 'bike', car: 'car' };
+
 function LegRow({ e, lang, disruptions }: { e: TimelineEntry; lang: Lang; disruptions: Disruption[] }) {
   const leg = e.leg!;
   const d = leg.disruption ? disruptions.find((x) => x.id === leg.disruption!.id) : undefined;
   const dText = d ? (lang === 'pt' ? d.header.pt ?? d.header.en : d.header.en ?? d.header.pt) : undefined;
   const risk = !!d || e.status === 'at-risk';
+  if (leg.status !== 'routed') {
+    return (
+      <li className="mb-tl__item mb-tl__item--leg">
+        <span className="mb-tl__time" />
+        <span className="mb-tl__rail" aria-hidden="true"><span className="mb-tl__line mb-tl__line--walk" /></span>
+        <div className="mb-tl__leg" aria-busy={leg.status === 'pending'}>
+          <Icon name={leg.status === 'pending' ? 'route' : 'alert'} size={18} />
+          <span>{leg.detail[lang]}</span>
+        </div>
+      </li>
+    );
+  }
+  const extras: string[] = [];
+  if (leg.boardAt !== undefined) extras.push(t(lang, 'route.leaves', { time: fmt(leg.boardAt) }));
+  if (leg.climbM && leg.climbM >= 15) extras.push(t(lang, 'route.climb', { n: leg.climbM }));
   return (
     <li className="mb-tl__item mb-tl__item--leg">
       <span className="mb-tl__time" />
       <span className="mb-tl__rail" aria-hidden="true"><span className={['mb-tl__line', leg.mode === 'walk' && 'mb-tl__line--walk', risk && 'mb-tl__line--risk'].filter(Boolean).join(' ')} /></span>
       <div className={`mb-tl__leg${d ? ' mb-tl__leg--risk' : ''}`}>
-        <Icon name={leg.mode} size={18} />
+        <Icon name={MODE_ICON[leg.mode] ?? 'route'} size={18} />
         <span>
           <strong>{t(lang, 'min', { n: leg.minutes })}</strong> · {leg.detail[lang]}
+          {extras.length ? <span className="mono"> · {extras.join(' · ')}</span> : null}
+          {leg.realtime ? <span className="mb-tl__live"> · {t(lang, 'route.live')}</span> : null}
+          {leg.via ? <span className="mb-tl__via">{leg.via}</span> : null}
           {dText ? <><br /><span className="mb-sr">Alert: </span>{dText}</> : null}
         </span>
       </div>

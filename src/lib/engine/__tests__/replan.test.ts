@@ -3,12 +3,12 @@ import type { Disruption, Priority, Proposal, Stop } from '../../domain/types';
 import { DEFAULT_SETTINGS, ritaDay } from '../../seed';
 import { replan, undoDeadline } from '../replan';
 import { buildTimeline, stopsOn } from '../schedule';
-import { EstimatePlanner } from '../travel';
+import { FixturePlanner } from './fixturePlanner';
 import { detectTriggers, dismissKeys, filterDismissed } from '../triggers';
 
 const DATE = '2026-11-17'; // a Tuesday
 const NOW = 10 * 60 + 12;
-const planner = new EstimatePlanner();
+const planner = new FixturePlanner();
 const clock = () => 1_000_000;
 
 function run(opts: { stops?: Stop[]; late?: number; priority?: Priority; disruptions?: Disruption[]; raining?: boolean; now?: number; busWhenRain?: boolean } = {}): Proposal | null {

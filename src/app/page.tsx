@@ -9,12 +9,12 @@ import { addDays, longDate } from '@/lib/domain/time';
 import type { Priority, Stop } from '@/lib/domain/types';
 import { buildTimeline, endOf, stopsOn } from '@/lib/engine/schedule';
 import { t } from '@/lib/i18n';
-import { planner, useStore } from '@/lib/store';
+import { useStore } from '@/lib/store';
 
 const VISIBLE = 6; // FR-04: next 5–6 stops, the rest one tap away
 
 export default function Today() {
-  const { state, dispatch, hydrated, now, detection, feed, feedError } = useStore();
+  const { state, dispatch, hydrated, now, detection, feed, feedError, planner, routing } = useStore();
   const lang = state.settings.lang;
   const [sheet, setSheet] = useState<{ kind: 'stop'; stop: Stop | null } | { kind: 'late' } | null>(null);
   const [showEarlier, setShowEarlier] = useState(false);
@@ -24,11 +24,11 @@ export default function Today() {
     () => ({ rules: state.settings.rules, priority: state.settings.priority, raining: detection.raining, disruptions: detection.relevant }),
     [state.settings.rules, state.settings.priority, detection],
   );
-  const today = useMemo(() => buildTimeline(stopsOn(state.stops, now.date), planner, ctx, now.minutes), [state.stops, now, ctx]);
+  const today = useMemo(() => buildTimeline(stopsOn(state.stops, now.date), planner, ctx, now.minutes), [state.stops, now, ctx, planner]);
   const tomorrowDate = addDays(now.date, 1);
   const tomorrow = useMemo(
     () => buildTimeline(stopsOn(state.stops, tomorrowDate), planner, { ...ctx, raining: false, disruptions: [] }),
-    [state.stops, tomorrowDate, ctx],
+    [state.stops, tomorrowDate, ctx, planner],
   );
 
   if (!hydrated) return <main className="app" aria-busy="true" />;
@@ -52,6 +52,7 @@ export default function Today() {
       </div>
 
       {feedsDown && !empty ? <div className="banner" role="status"><Icon name="alert" size={18} />{t(lang, 'live.unavailable')}</div> : null}
+      {routing.error && !empty ? <div className="banner" role="status"><Icon name="route" size={18} />{t(lang, 'route.down')}</div> : null}
 
       <div id="proposal"><ReplanCard /></div>
 
