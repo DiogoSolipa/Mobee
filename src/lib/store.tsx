@@ -10,8 +10,11 @@ import { DEFAULT_SETTINGS, RITA_NOW, ritaDay, ritaDayNow } from './seed';
 import { autoTheme } from './theme';
 
 /**
- * Client state. MVP keeps the plan on the device (localStorage) — no account needed to try it.
- * When accounts land (FR-31), swap `load`/`save` for the API; the reducer stays the same.
+ * Client state. The plan is always cached on the device (localStorage), so the app opens instantly
+ * and the demo works without an account. When the person is signed in (Google, or the personal
+ * access link), the server copy in /api/state is the source of truth: it is loaded after the local
+ * cache and every change is pushed back (debounced), with optimistic concurrency on `version`.
+ * The reducer does not know any of this.
  */
 
 const STORAGE_KEY = 'mobee:v1';
@@ -129,21 +132,38 @@ function reducer(s: State, a: Action): State {
   }
 }
 
+function normalise(parsed: Partial<State>, demo?: Demo): State {
+  return { ...initial, ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings, rules: { ...DEFAULT_SETTINGS.rules, ...parsed.settings?.rules } }, demo: { ...initial.demo, ...(demo ?? parsed.demo) } };
+}
 function load(): State | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<State>;
-    return { ...initial, ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings, rules: { ...DEFAULT_SETTINGS.rules, ...parsed.settings?.rules } }, demo: { ...initial.demo, ...parsed.demo } };
+    return raw ? normalise(JSON.parse(raw) as Partial<State>) : null;
   } catch {
     return null;
   }
+}
+/** What goes to the server: everything except the demo simulator. */
+function toRemote(s: State): Omit<State, 'demo'> {
+  const { demo: _demo, ...rest } = s;
+  return rest;
+}
+export function clearLocal() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignored */ }
 }
 function save(s: State) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch { /* private mode or quota: keep working in memory */ }
 }
 
 export interface Toast { title: string; body: string; at: number }
+
+export interface Account {
+  /** 'unavailable' = the server has no database (local-only demo mode) or is unreachable. */
+  status: 'loading' | 'signed-out' | 'signed-in' | 'unavailable';
+  user?: { name: string; email: string; image?: string | null };
+  via?: 'session' | 'token';
+  sync: 'idle' | 'saving' | 'error';
+}
 
 interface Ctx {
   state: State;
@@ -160,6 +180,7 @@ interface Ctx {
   /** Trip planner backed by real routes; legs it has not fetched yet come back 'pending'. */
   planner: MatrixPlanner;
   routing: { inFlight: number; error: string | null; provider: string | null };
+  account: Account;
 }
 
 const StoreContext = createContext<Ctx | null>(null);
@@ -236,14 +257,89 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }, 120);
   });
 
-  // Hydrate from the device, pick the phone's language on first run.
+  // ---- Account + server sync ----
+  const [account, setAccount] = useState<Account>({ status: 'loading', sync: 'idle' });
+  const [remoteOn, setRemoteOn] = useState(false);
+  const version = useRef(0);
+  const lastPushed = useRef<string | null>(null);
+
+  const adoptRemote = useCallback((remote: Partial<State>, v: number) => {
+    const next = normalise(remote, stateRef.current.demo);
+    version.current = v;
+    lastPushed.current = JSON.stringify(toRemote(next));
+    dispatch({ type: 'hydrate', state: next });
+  }, []);
+
+  const pullRemote = useCallback(async () => {
+    const r = await fetch('/api/state', { cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return (await r.json()) as { state: Partial<State> | null; version: number };
+  }, []);
+
+  // Hydrate from the device first (instant), then from the server when signed in.
+  // Portuguese by default (pilot in Lisbon); English is one tap away.
   useEffect(() => {
     const stored = load();
     if (stored) dispatch({ type: 'hydrate', state: stored });
-    // Portuguese by default (pilot in Lisbon); English is one tap away.
     setHydrated(true);
-  }, []);
-  useEffect(() => { if (hydrated) save(state); }, [state, hydrated]);
+    (async () => {
+      try {
+        const me = await fetch('/api/me', { cache: 'no-store' });
+        if (!me.ok) { setAccount({ status: 'unavailable', sync: 'idle' }); return; }
+        const m = (await me.json()) as { user: Account['user'] | null; via?: Account['via'] };
+        if (!m.user) { setAccount({ status: 'signed-out', sync: 'idle' }); return; }
+        setAccount({ status: 'signed-in', user: m.user, via: m.via, sync: 'idle' });
+        const remote = await pullRemote();
+        // First sign-in on this device: an empty account adopts the local plan (pushed by the effect below).
+        if (remote.state) adoptRemote(remote.state, remote.version);
+        else version.current = 0;
+        setRemoteOn(true);
+      } catch {
+        setAccount((a) => ({ ...a, status: a.status === 'loading' ? 'unavailable' : a.status, sync: 'error' }));
+      }
+    })();
+  }, [adoptRemote, pullRemote]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    save(state);
+    if (!remoteOn) return;
+    const body = JSON.stringify(toRemote(state));
+    if (body === lastPushed.current) return;
+    const timer = setTimeout(async () => {
+      setAccount((a) => ({ ...a, sync: 'saving' }));
+      try {
+        const res = await fetch('/api/state', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state: JSON.parse(body), baseVersion: version.current }) });
+        if (res.status === 409) {
+          // Someone else wrote first (another device, the assistant): the server copy wins.
+          const j = (await res.json()) as { state: Partial<State> | null; version: number };
+          if (j.state) adoptRemote(j.state, j.version); else version.current = j.version;
+        } else if (res.ok) {
+          version.current = ((await res.json()) as { version: number }).version;
+          lastPushed.current = body;
+        } else throw new Error(`HTTP ${res.status}`);
+        setAccount((a) => ({ ...a, sync: 'idle' }));
+      } catch {
+        setAccount((a) => ({ ...a, sync: 'error' }));
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [state, hydrated, remoteOn, adoptRemote]);
+
+  // Coming back to the app: pick up changes made elsewhere (assistant, another device).
+  useEffect(() => {
+    if (!remoteOn) return;
+    const onVis = async () => {
+      if (document.visibilityState !== 'visible') return;
+      if (JSON.stringify(toRemote(stateRef.current)) !== lastPushed.current) return; // local edits pending: they push first
+      try {
+        const remote = await pullRemote();
+        if (remote.state && remote.version > version.current) adoptRemote(remote.state, remote.version);
+      } catch { /* offline: keep the local copy */ }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [remoteOn, adoptRemote, pullRemote]);
 
   // Minute tick: statuses, undo deadline and the 3-hour window move with the clock.
   useEffect(() => {
@@ -327,7 +423,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value: Ctx = {
     state, dispatch, hydrated, now, feed, feedError, refreshFeed: () => refreshFeed(true), detection, theme,
-    toast, dismissToast: () => setToast(null), planner, routing,
+    toast, dismissToast: () => setToast(null), planner, routing, account,
   };
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

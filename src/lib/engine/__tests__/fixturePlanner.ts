@@ -20,7 +20,9 @@ function km(a: Place, b: Place): number {
 }
 
 function placeOf(s: Stop): Place | undefined {
-  return s.placeId ? PLACE_BY_ID[s.placeId] : undefined;
+  if (s.placeId) return PLACE_BY_ID[s.placeId];
+  // Coordinates only (e.g. the virtual "here" stop): no metro station known, so walk/bus only.
+  return typeof s.lat === 'number' && typeof s.lon === 'number' ? { id: s.id, name: s.placeName, lat: s.lat, lon: s.lon } : undefined;
 }
 
 type Candidate = Omit<Leg, 'fromStopId' | 'toStopId' | 'status'>;

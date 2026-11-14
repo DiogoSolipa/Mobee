@@ -52,7 +52,27 @@ export interface Stop {
   openingHours?: { from: Minutes; to: Minutes };
   /** Set when an accepted proposal moved this stop (FR-08). */
   previous?: { date: ISODate; start: Minutes };
+
+  /* ---- v2 (docs/requirements). All optional so v1 plans keep loading. ---- */
+  /** Where the item came from (V2-11). Missing = typed in the v1 stop sheet. */
+  source?: StopSource;
+  /** What kind of item it is (V2-01 – V2-03). Missing = place task, or commitment when `fixed`. */
+  kind?: StopKind;
+  /** For category tasks: what to look for, e.g. 'pharmacy' (V2-03). */
+  category?: string;
+  /** "If there's time…": first thing dropped in a replan (V2-04). */
+  optional?: boolean;
+  /** Set when the item is done (V2-45 – V2-48). Done items never take part in replanning. */
+  done?: { at: number; how: 'arrived' | 'inferred' | 'calendar' | 'manual' };
+  /** Google Calendar event this commitment mirrors (V2-22). */
+  calendarEventId?: string;
 }
+
+export type StopSource = 'calendar' | 'voice' | 'text' | 'mcp' | 'manual';
+export type StopKind = 'commitment' | 'place_task' | 'category_task';
+
+/** Id of the virtual stop that stands for "where I am now" (V2-05). Never stored. */
+export const HERE_ID = 'here';
 
 export interface LineRef {
   /** Normalised key, e.g. 'ml:green', 'cp:sintra', 'cm:1716'. */

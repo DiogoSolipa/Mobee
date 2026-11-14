@@ -1,7 +1,7 @@
 import { addDays } from '../domain/time';
-import type { Change, Disruption, ISODate, Leg, Minutes, Priority, Proposal, Settings, Stop, Trigger } from '../domain/types';
+import { HERE_ID, type Change, type Disruption, type ISODate, type Leg, type Minutes, type Priority, type Proposal, type Settings, type Stop, type Trigger } from '../domain/types';
 import { endOf, stopsOn } from './schedule';
-import type { LegContext, TripPlanner } from './travel';
+import type { Coord, LegContext, TripPlanner } from './travel';
 import { WINDOW_MIN } from './triggers';
 
 /**
@@ -30,8 +30,20 @@ export interface ReplanInput {
   raining: boolean;
   settings: Pick<Settings, 'priority' | 'rules'>;
   planner: TripPlanner;
+  /** Current position (V2-05). When set, the person leaves from here unless a stop is in progress. */
+  here?: Coord;
   /** Injected for tests; defaults to Date.now(). */
   clock?: () => number;
+}
+
+/** The virtual stop for "where I am now": zero duration, starts now (V2-05). */
+export function hereStop(here: Coord, date: ISODate, now: Minutes): Stop {
+  return { id: HERE_ID, title: 'Here', placeName: '', lat: here.lat, lon: here.lon, date, start: now, duration: 0, context: 'self', fixed: false };
+}
+
+/** Items still to plan: done items never move or block anything (V2-45). */
+export function active(stops: Stop[]): Stop[] {
+  return stops.filter((s) => !s.done);
 }
 
 interface Placement {
@@ -109,18 +121,20 @@ function evaluate(
   }
 
   const lateTotal = fixedLate.reduce((a, f) => a + f.lateBy, 0);
-  const deferTimed = deferred.filter((s) => !s.flex).length;
+  const deferTimed = deferred.filter((s) => !s.flex && !s.optional).length;
+  // "If there's time…" items are cheap to drop (V2-04).
+  const dropped = deferred.reduce((a, s) => a + (s.optional ? 0.2 : 1), 0);
   const base = lateTotal * 1000 + violations * 500 + deferTimed * 200;
   let cost: number;
   switch (priority) {
     case 'fastest':
-      cost = base + travel * 2 + cursor * 0.2 + deferred.length * 30 + moved * 2;
+      cost = base + travel * 2 + cursor * 0.2 + dropped * 30 + moved * 2;
       break;
     case 'calm':
-      cost = base + transfers * 15 + walking * 1.5 + deferred.length * 40 + moved * 5 + travel * 0.5;
+      cost = base + transfers * 15 + walking * 1.5 + dropped * 40 + moved * 5 + travel * 0.5;
       break;
     default: // fewest changes
-      cost = base + deferred.length * 100 + moved * 10 + travel * 0.2;
+      cost = base + dropped * 100 + moved * 10 + travel * 0.2;
   }
   return { placements, deferred, fixedLate, violations, travel, transfers, walking, moved, cost };
 }
@@ -144,12 +158,12 @@ export function replan(input: ReplanInput): Proposal | null {
   const { stops, date, now, triggers, planner } = input;
   const priority = input.settings.priority;
   if (!triggers.length) return null;
-  const day = stopsOn(stops, date);
+  const day = stopsOn(active(stops), date);
 
-  // Origin: the stop in progress, else the last stop already finished, else none (leave from "now").
+  // Origin: the stop in progress; else where the person is now (V2-05); else the last stop already finished; else none.
   const inProgress = day.find((s) => s.start <= now && endOf(s) > now);
   const finished = day.filter((s) => endOf(s) <= now);
-  const origin = inProgress ?? finished[finished.length - 1];
+  const origin = inProgress ?? (input.here ? hereStop(input.here, date, now) : finished[finished.length - 1]);
   const upcoming = day.filter((s) => s !== origin && endOf(s) > now);
   if (!upcoming.length) return null;
 
@@ -166,7 +180,10 @@ export function replan(input: ReplanInput): Proposal | null {
   const baselineLegs = legsByTarget(baseline.placements);
 
   // Search deferral sets over movable stops (flexible first).
-  const movable = upcoming.filter((s) => canDefer(s, date)).sort((a, b) => Number(!!b.flex) - Number(!!a.flex)).slice(0, MAX_SEARCH);
+  const movable = upcoming
+    .filter((s) => canDefer(s, date))
+    .sort((a, b) => Number(!!b.optional) - Number(!!a.optional) || Number(!!b.flex) - Number(!!a.flex))
+    .slice(0, MAX_SEARCH);
   let best = evaluate(origin, depart, upcoming, new Set(), priority, planner, ctxNow);
   const needsSearch = best.fixedLate.length > 0 || best.violations > 0;
   if (needsSearch) {
@@ -220,7 +237,7 @@ export function replan(input: ReplanInput): Proposal | null {
     createdAt,
     triggers,
     changes,
-    protectedStopIds: upcoming.filter((s) => s.fixed).map((s) => s.id),
+    protectedStopIds: upcoming.filter((s) => s.fixed && s.id !== HERE_ID).map((s) => s.id),
     atRisk: best.fixedLate,
     result,
     priority,

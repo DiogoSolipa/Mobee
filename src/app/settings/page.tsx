@@ -1,22 +1,42 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
+import { AccountSection } from '@/components/app/Account';
 import { SubPage } from '@/components/app/Shell';
 import { Button, Chip, Dot, Segmented } from '@/components/ds';
 import type { ContextKey, Lang, Priority, Settings, TravelRules } from '@/lib/domain/types';
 import { contextName, t } from '@/lib/i18n';
-import { useStore } from '@/lib/store';
+import { authClient } from '@/lib/auth-client';
+import { clearLocal, useStore } from '@/lib/store';
 
 export default function SettingsPage() {
-  const { state, dispatch, hydrated } = useStore();
+  const { state, dispatch, hydrated, account } = useStore();
   const s = state.settings;
   const lang = s.lang;
   const [confirm, setConfirm] = useState(false);
   if (!hydrated) return <main className="app" aria-busy="true" />;
   const set = (patch: Partial<Settings>) => dispatch({ type: 'settings', patch });
   const rule = (k: keyof TravelRules) => (v: boolean) => set({ rules: { ...s.rules, [k]: v } });
+  const signedIn = account.status === 'signed-in';
+  // "Apagar tudo": with an account, the server copy goes too (account, Google tokens, plan, access links).
+  const erase = async () => {
+    if (!confirm) { setConfirm(true); return; }
+    setConfirm(false);
+    if (account.via === 'session') {
+      const r = await fetch('/api/state', { method: 'DELETE' }).catch(() => null);
+      if (!r?.ok) return;
+      await authClient.signOut().catch(() => undefined);
+      clearLocal();
+      window.location.href = '/app';
+      return;
+    }
+    dispatch({ type: 'erase' });
+  };
 
   return (
     <SubPage title={t(lang, 'settings.title')}>
+      <AccountSection />
+
       <section className="card stack">
         <label className="field"><span>{t(lang, 'settings.name')}</span>
           <input value={s.name} onChange={(e) => set({ name: e.target.value.slice(0, 30) })} autoComplete="given-name" />
@@ -69,9 +89,10 @@ export default function SettingsPage() {
 
       <section className="card stack">
         <h2 className="h2">{t(lang, 'settings.data')}</h2>
-        <p className="small muted" style={{ margin: 0 }}>{t(lang, 'settings.dataHint')}</p>
-        <Button variant="danger" onClick={() => { if (confirm) { dispatch({ type: 'erase' }); setConfirm(false); } else setConfirm(true); }}>
-          {confirm ? t(lang, 'settings.eraseConfirm') : t(lang, 'settings.erase')}
+        <p className="small muted" style={{ margin: 0 }}>{t(lang, signedIn ? 'settings.dataHintAccount' : 'settings.dataHint')}</p>
+        <Link href="/privacidade" className="small">{t(lang, 'settings.privacy')}</Link>
+        <Button variant="danger" data-action="erase-all" onClick={erase}>
+          {confirm ? t(lang, 'settings.eraseConfirm') : t(lang, account.via === 'session' ? 'settings.eraseAccount' : 'settings.erase')}
         </Button>
         <p className="small muted" style={{ margin: 0 }}>{t(lang, 'settings.about')}</p>
       </section>
