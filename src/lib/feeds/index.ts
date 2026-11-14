@@ -37,7 +37,24 @@ async function getJson(url: string, init: RequestInit = {}): Promise<unknown> {
 interface SourceResult { disruptions: Disruption[]; rainProbability?: number }
 interface Source { id: DisruptionSource; label: string; run: () => Promise<SourceResult | 'skipped'> }
 
-export const TML_ALERT_PATHS = ['/alerts/gtfs', '/alerts', '/alerts/gtfs.json'];
+export const TML_ALERT_PATHS = ['/alerts/gtfs', '/alerts'];
+
+let tmlOrg: { id: string; at: number } | null = null;
+interface HubOrg { _id?: string; id?: string; name?: string; short_name?: string; slug?: string }
+/** GO Hub organisation id: TML_GO_ORGANIZATION if set, else the TML organisation from /v1/organizations (cached 6 h). */
+export async function tmlOrganization(): Promise<string> {
+  const fixed = process.env.TML_GO_ORGANIZATION?.trim();
+  if (fixed) return fixed;
+  if (tmlOrg && Date.now() - tmlOrg.at < 6 * 3600e3) return tmlOrg.id;
+  const json = (await getJson(`${BASES.tml()}/organizations`)) as { data?: HubOrg[] } | HubOrg[];
+  const list = Array.isArray(json) ? json : json.data ?? [];
+  const label = (o: HubOrg) => `${o.name ?? ''} ${o.short_name ?? ''} ${o.slug ?? ''}`.toLowerCase();
+  const pick = list.find((o) => /transportes metropolitanos|\btml\b/.test(label(o))) ?? list[0];
+  const id = pick?._id ?? pick?.id;
+  if (!id) throw new Error('No organisation in /organizations');
+  tmlOrg = { id, at: Date.now() };
+  return id;
+}
 
 let metroToken: { value: string; expires: number } | null = null;
 
@@ -104,14 +121,15 @@ export const SOURCES: Source[] = [
   {
     id: 'tml', label: 'TML GO hub · alerts (all Lisbon operators)',
     run: async () => {
-      // The GO hub has moved paths between versions; try the documented ones in order.
+      // Hub v1 now scopes alerts by organisation: /v1/:organizationId/alerts/gtfs
+      const org = await tmlOrganization();
       let lastErr: unknown;
       for (const path of TML_ALERT_PATHS) {
         try {
-          return { disruptions: parseAlerts(await getJson(`${BASES.tml()}${path}`), 'tml', 'tml') };
+          return { disruptions: parseAlerts(await getJson(`${BASES.tml()}/${org}${path}`), 'tml', 'tml') };
         } catch (e) { lastErr = e; }
       }
-      throw lastErr instanceof Error ? new Error(`${lastErr.message} on ${TML_ALERT_PATHS.join(', ')}`) : lastErr;
+      throw lastErr instanceof Error ? new Error(`${lastErr.message} (organisation ${org})`) : lastErr;
     },
   },
   {
@@ -185,10 +203,11 @@ export async function getArrivals(stopId: string): Promise<unknown> {
 
 /** Probe helper for /api/debug/feeds: status and the first bytes of each candidate endpoint. */
 export async function probe(): Promise<{ url: string; status: number | string; sample: string }[]> {
+  let org = '';
+  try { org = await tmlOrganization(); } catch { /* reported below */ }
   const urls = [
-    ...TML_ALERT_PATHS.map((p) => `${BASES.tml()}${p}`),
-    `${BASES.tml()}/realtime/vehicles/positions`,
-    `${BASES.cm()}/alerts`,
+    `${BASES.tml()}/organizations`,
+    ...TML_ALERT_PATHS.map((p) => `${BASES.tml()}/${org}${p}`),
   ];
   return Promise.all(urls.map(async (url) => {
     const ctrl = new AbortController();
