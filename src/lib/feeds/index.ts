@@ -38,15 +38,62 @@ interface SourceResult { disruptions: Disruption[]; rainProbability?: number }
 interface Source { id: DisruptionSource; label: string; run: () => Promise<SourceResult | 'skipped'> }
 
 let metroToken: { value: string; expires: number } | null = null;
+
+/**
+ * Metro de Lisboa (WSO2 API store) client credentials. Accepted, in order:
+ *  - METRO_LISBOA_BASIC_AUTH: the base64 string from the store's curl example ("Authorization: Basic …")
+ *  - METRO_LISBOA_CONSUMER_KEY + METRO_LISBOA_CONSUMER_SECRET
+ * Grant: client_credentials, or password when METRO_LISBOA_USERNAME + METRO_LISBOA_PASSWORD are set.
+ * Never commit these: set them in Vercel → Project → Settings → Environment Variables, or in .env.local.
+ */
+function metroBasic(): string | null {
+  const basic = process.env.METRO_LISBOA_BASIC_AUTH?.trim().replace(/^Basic\s+/i, '');
+  if (basic) return basic;
+  const key = process.env.METRO_LISBOA_CONSUMER_KEY?.trim(), secret = process.env.METRO_LISBOA_CONSUMER_SECRET?.trim();
+  return key && secret ? Buffer.from(`${key}:${secret}`).toString('base64') : null;
+}
+
+/**
+ * The store's gateway (port 8243) has served a certificate that curl only accepts with -k.
+ * Verification stays ON unless METRO_LISBOA_INSECURE_TLS=true, and that flag only affects this one host.
+ */
+async function metroRequest(path: string, init: { method?: 'GET' | 'POST'; headers: Record<string, string>; body?: string }): Promise<unknown> {
+  const https = await import('node:https');
+  const insecure = process.env.METRO_LISBOA_INSECURE_TLS === 'true';
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      { host: 'api.metrolisboa.pt', port: 8243, path, method: init.method ?? 'GET', headers: { accept: 'application/json', ...init.headers }, rejectUnauthorized: !insecure, timeout: TIMEOUT_MS },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          if ((res.statusCode ?? 500) >= 400) return reject(new Error(`HTTP ${res.statusCode}`));
+          try { resolve(JSON.parse(data)); } catch { reject(new Error('Invalid JSON')); }
+        });
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error('Timed out')));
+    req.on('error', (e: NodeJS.ErrnoException) => reject(new Error(/CERT|SELF_SIGNED|UNABLE_TO_VERIFY/i.test(e.code ?? e.message) ? `TLS certificate rejected (${e.code}); see README` : e.message)));
+    if (init.body) req.write(init.body);
+    req.end();
+  });
+}
+
 async function metroBearer(): Promise<string | null> {
-  const key = process.env.METRO_LISBOA_CONSUMER_KEY, secret = process.env.METRO_LISBOA_CONSUMER_SECRET;
-  if (!key || !secret) return null;
+  const basic = metroBasic();
+  if (!basic) return null;
   if (metroToken && metroToken.expires > Date.now() + 30_000) return metroToken.value;
-  const json = (await getJson('https://api.metrolisboa.pt:8243/token', {
+  const user = process.env.METRO_LISBOA_USERNAME, pass = process.env.METRO_LISBOA_PASSWORD;
+  const body = user && pass
+    ? `grant_type=password&username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`
+    : 'grant_type=client_credentials';
+  const json = (await metroRequest('/token', {
     method: 'POST',
-    headers: { authorization: `Basic ${Buffer.from(`${key}:${secret}`).toString('base64')}`, 'content-type': 'application/x-www-form-urlencoded' },
-    body: 'grant_type=client_credentials',
-  })) as { access_token: string; expires_in: number };
+    headers: { authorization: `Basic ${basic}`, 'content-type': 'application/x-www-form-urlencoded' },
+    body,
+  })) as { access_token?: string; expires_in?: number };
+  if (!json.access_token) throw new Error('No access token in response');
   metroToken = { value: json.access_token, expires: Date.now() + (json.expires_in ?? 300) * 1000 };
   return metroToken.value;
 }
@@ -65,7 +112,7 @@ export const SOURCES: Source[] = [
     run: async () => {
       const token = await metroBearer();
       if (!token) return 'skipped';
-      const json = await getJson('https://api.metrolisboa.pt:8243/estadoServicoML/1.0.1/estadoLinha/todos', { headers: { authorization: `Bearer ${token}` } });
+      const json = await metroRequest('/estadoServicoML/1.0.1/estadoLinha/todos', { headers: { authorization: `Bearer ${token}` } });
       return { disruptions: parseLineStatus(json, Date.now()) };
     },
   },

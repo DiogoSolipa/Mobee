@@ -25,7 +25,9 @@ Open it and tap **Try Rita's Tuesday**. That loads the worked example with the c
 1. Push this folder to a GitHub repo.
 2. On vercel.com, choose **Add New → Project**, import the repo and keep the defaults (Next.js is detected automatically).
 3. Optional environment variables (see `.env.example`):
-   - `METRO_LISBOA_CONSUMER_KEY` / `METRO_LISBOA_CONSUMER_SECRET`: a free account on the Metro de Lisboa API store. Without them, that source shows as "Not set up" and the GO hub still carries Metro alerts.
+   - `METRO_LISBOA_BASIC_AUTH`: the base64 string after `Authorization: Basic` in the Metro de Lisboa API store's curl example. (Or `METRO_LISBOA_CONSUMER_KEY` + `METRO_LISBOA_CONSUMER_SECRET`, and `METRO_LISBOA_USERNAME` + `METRO_LISBOA_PASSWORD` if the store requires the password grant.) Without these, that source shows as "Not set up" and the GO hub still carries Metro alerts.
+   - `METRO_LISBOA_INSECURE_TLS=true`: only if `/live` reports "TLS certificate rejected" for the Metro source. The store's own example uses `curl -k`. This setting affects that one host only.
+   - **Keys go in Vercel's Environment Variables, or in `.env.local` on your machine (git-ignored). Never put them in a committed file.**
    - `TML_GO_BASE`, `CARRIS_METROPOLITANA_BASE`, `IPMA_BASE`: override these only if a provider moves an endpoint.
 4. Deploy. Or run `npx vercel` from this folder.
 
