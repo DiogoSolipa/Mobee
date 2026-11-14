@@ -47,6 +47,7 @@ Objetivo: um tester liga o Google, escreve o dia e recebe o próximo passo. Text
 ## Fase 5: Abrir aos testers
 
 - Remover `/api/debug/*`, rever quotas (Places, Transitous, LLM) e enviar o link.
+- Opcional: `METRO_LISBOA_BASIC_AUTH` no `mobee-travel-app` (fonte de reserva; os alertas do Metro já chegam pelo GO hub). Ficou no projeto antigo `mobee` como sensitive, por isso tem de ser regenerada no API store do Metro.
 
 ## TO BE (depois do piloto)
 

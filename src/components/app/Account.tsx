@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ds';
-import { authClient, signInWithGoogle } from '@/lib/auth-client';
+import { authClient, connectCalendar, signInWithGoogle } from '@/lib/auth-client';
 import { t } from '@/lib/i18n';
 import { useStore } from '@/lib/store';
 
@@ -44,6 +44,18 @@ export function AccountSection() {
         <p className="small" style={{ margin: 0 }}>
           {account.via === 'token' ? t(lang, 'account.viaLink') : t(lang, 'account.signedInAs', { email: account.user?.email ?? '' })}
         </p>
+        {account.via === 'session' ? (
+          account.calendar ? (
+            <p className="small muted" style={{ margin: 0 }}>{t(lang, 'account.calendarOn')}</p>
+          ) : (
+            <>
+              <p className="small" style={{ margin: 0 }}>{t(lang, 'account.calendarOff')}</p>
+              <Button variant="primary" data-action="connect-calendar" aria-label={t(lang, 'account.calendarConnect')} onClick={() => connectCalendar('/settings')}>
+                {t(lang, 'account.calendarConnect')}
+              </Button>
+            </>
+          )
+        ) : null}
         {account.sync === 'error' ? <p className="small muted" role="status" style={{ margin: 0 }}>{t(lang, 'account.syncError')}</p> : null}
         {account.via === 'session' ? <Button data-action="sign-out" onClick={signOut}>{t(lang, 'account.signOut')}</Button> : null}
       </section>

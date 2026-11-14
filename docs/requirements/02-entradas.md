@@ -17,6 +17,7 @@ Estado: **fechado** (2026-11-14).
 
 - **V2-20** Ligar Google Calendar por OAuth com o scope `calendar.readonly`, num só ecrã ("Ligar Google"), sem mais perguntas.
 - **V2-21** Publicar a app OAuth como **In production** sem verificação (limite de 100 utilizadores; os testers veem o aviso "app não verificada" uma vez). Em modo *Testing*, os refresh tokens expiram em 7 dias.
+- **V2-21a** O ecrã de consentimento da Google mostra o Calendar como uma caixa que a pessoa pode deixar por marcar, e o login funciona na mesma sem ela. A app verifica a permissão guardada e, se faltar, mostra "Ligar Google Calendar", que volta a pedir só esse acesso (Better Auth `linkSocial` com o scope do Calendar).
 - **V2-22** Ler os eventos de hoje e amanhã de todos os calendários visíveis do utilizador. Atualizar ao abrir a app e periodicamente no servidor.
 - **V2-23** Evento com morada física → compromisso (`fixed`) com deslocação. Evento sem morada, ou com link de videochamada → bloqueia tempo, sem percurso. Evento de dia inteiro → ignorado no encaixe (aparece como contexto).
 - **V2-24** A morada de um evento é geocodificada uma vez e o resultado fica guardado. Se for ambígua, a app pergunta com um toque ("Saldanha → Av. Duque d'Ávila?"), uma vez.

@@ -162,6 +162,8 @@ export interface Account {
   status: 'loading' | 'signed-out' | 'signed-in' | 'unavailable';
   user?: { name: string; email: string; image?: string | null };
   via?: 'session' | 'token';
+  /** Read-only Google Calendar access was granted (V2-20). */
+  calendar?: boolean;
   sync: 'idle' | 'saving' | 'error';
 }
 
@@ -286,9 +288,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const me = await fetch('/api/me', { cache: 'no-store' });
         if (!me.ok) { setAccount({ status: 'unavailable', sync: 'idle' }); return; }
-        const m = (await me.json()) as { user: Account['user'] | null; via?: Account['via'] };
+        const m = (await me.json()) as { user: Account['user'] | null; via?: Account['via']; calendar?: boolean };
         if (!m.user) { setAccount({ status: 'signed-out', sync: 'idle' }); return; }
-        setAccount({ status: 'signed-in', user: m.user, via: m.via, sync: 'idle' });
+        setAccount({ status: 'signed-in', user: m.user, via: m.via, calendar: m.calendar, sync: 'idle' });
         const remote = await pullRemote();
         // First sign-in on this device: an empty account adopts the local plan (pushed by the effect below).
         if (remote.state) adoptRemote(remote.state, remote.version);
